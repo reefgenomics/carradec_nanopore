@@ -41,15 +41,35 @@ class SequenceCollection:
     It cannot be created directly from binary files or from paired files. As such, to generate a SequenceCollection
     for example from a pair of fastaq.gz files, you would first have to run a mothur contig analysis and create
     the SeqeunceCollection from the resultant fasta file that is generated."""
-    def __init__(self, name, path_to_file=None):
+    def __init__(self, name, path_to_file=None, auto_convert_to_fasta=True):
         self.name = name
         self.file_path = path_to_file
         # self.file_as_list = read_defined_file_to_list(self.file_path)
         self.file_type = self.infer_file_type()
         self.sequence_collection = self.generate_sequence_collection()
+        if auto_convert_to_fasta:
+            self.file_path = self.write_out_as_fasta()
+            self.file_type = 'fasta'
 
     def __len__(self):
         return(len(self.sequence_collection))
+
+    def write_out_as_fasta(self, path_for_fasta_file = None):
+        if self.file_type == 'fasta':
+            print(f'SequenceCollection is already of type fasta and a fasta file already exists: {self.file_path}')
+            return
+        if self.file_type == 'fastq':
+            if path_for_fasta_file is None:
+                fasta_path = self.infer_fasta_path_from_current_fastq_path()
+                write_list_to_destination(destination=fasta_path, list_to_write=self.as_fasta())
+            else:
+                fasta_path = path_for_fasta_file
+                write_list_to_destination(destination=fasta_path, list_to_write=self.as_fasta())
+            return fasta_path
+
+
+    def infer_fasta_path_from_current_fastq_path(self):
+        return self.file_path.replace('fastq', 'fasta')
 
     def generate_sequence_collection(self):
         if self.file_type == 'fasta':
@@ -108,6 +128,27 @@ class NucleotideSequence:
         self.length = len(sequence)
         self.name = name
 
+def return_list_of_file_names_in_directory(directory_to_list):
+    """
+    return a list that contains the filenames found in the specified directory
+    :param directory_to_list: the directory that the file names should be returned from
+    :return: list of strings that are the file names found in the directory_to_list
+    """
+    list_of_file_names_in_directory = []
+    for (dirpath, dirnames, filenames) in os.walk(directory_to_list):
+        list_of_file_names_in_directory.extend(filenames)
+        return list_of_file_names_in_directory
+
+def return_list_of_file_paths_in_directory(directory_to_list):
+    """
+    return a list that contains the full paths of each of the files found in the specified directory
+    :param directory_to_list: the directory that the file paths should be returned from
+    :return: list of strings that are the file paths found in the directory_to_list
+    """
+    list_of_file_paths_in_directory = []
+    for (dirpath, dirnames, filenames) in os.walk(directory_to_list):
+        list_of_file_paths_in_directory.extend([os.path.join(directory_to_list, file_name) for file_name in filenames])
+        return list_of_file_paths_in_directory
 
 def read_defined_file_to_list(filename):
     with open(filename, mode='r') as reader:

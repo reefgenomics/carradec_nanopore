@@ -2,40 +2,100 @@ import os
 import subprocess
 from collections import defaultdict
 from hume_core_functions import *
+from pathlib import Path
 
-# move all fastq files into a single folder and append a name that refers to the site to make them unique
-def move_and_rename_carradec_files():
-    list_of_dir_paths = []
-    for (dirpath, dirnames, filenames) in os.walk('/home/humebc/projects/carradec_nanopore/All_Reads/'):
-        list_of_dir_paths.extend(['{}{}'.format('/home/humebc/projects/carradec_nanopore/All_Reads/', dirname) for dirname in dirnames])
-        break
+"""The ITS2 amplifications have been done with the LaJeunesse primers. The fastq files are located here:
+/home/humebc/projects/carradec_nanopore/all_reads
+We should create a sequence collection from each of the fastq.gz files
+convert them to fasta files
+then run a mothur analysis on them that will do a PCR using the laj primers
+we should then run a blast analysis on them to get only symbiodiniaceae sequences
+we should then seperate them by clade and then run MED.
+If MED isn't working then I think it should be quite simple to come up with an algrythm that approximates the concepts
+behind MED. I.e. find the consensus sequence, then find the next most numerate nucleotide etc etc. and compare these
+to the preMED SymPortal results.
+"""
 
-    new_dir = '/home/humebc/projects/carradec_nanopore/All_Reads/all_reads'
+def do_analysis():
+    list_of_fastq_file_paths = move_fastq_gz_files_to_new_subdirectories_and_decompress()
 
-    for dir in list_of_dir_paths:
-        base_name_of_dir = dir.split('/')[-1]
-        if base_name_of_dir[0] == 'K':
-            list_of_filenames = []
-            for (dirpath, dirnames, filenames) in os.walk(dir):
-                list_of_filenames.extend(filenames)
-                break
+    process_on_sample_by_sample_basis(list_of_fastq_file_paths)
 
-            for file in list_of_filenames:
-                subprocess.run(['cp', '{}/{}'.format(dir, file), '{}/{}_{}'.format(new_dir, base_name_of_dir, file)])
 
-    # here we have all of the files in the new_dir folder with the original file appended to make the file
-    # names unique still
 
-# so some initial house keeping
-# move_and_rename_carradec_files()
+def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
+    """This is the top function for the actual processing of the samples
+    create sequence collections from each of the fastq
+    """
+    for fastq_to_process_path in list_of_fastq_file_paths:
+        # todo generate a sequence_collection file
 
-# gzip all files on the command line so that they are now all in fastq.gz format
 
-# identify which primers were used
-# read in one of the fastq files and put all sequences that contain ATGTCTGCTTCAGTGCTTAACT
-# into a fasta format and look at these in alignment to work out what the primers were.
-# do this independent of bio python
-# it looks like they have used LaJeunesses primers here.
+
+def move_fastq_gz_files_to_new_subdirectories_and_decompress():
+    sequence_file_directory = '/home/humebc/projects/carradec_nanopore/all_reads'
+    list_of_fastq_gz_file_paths = get_list_of_fasta_gz_files(sequence_file_directory)
+    wkd_head_path = setup_directory_system_to_work_within()
+    list_of_fastq_file_paths = move_and_extract_each_fastq_gz_to_corresponding_subdirectory(wkd_head_path,
+                                                                                            list_of_fastq_gz_file_paths,
+                                                                                            sequence_file_directory)
+    return list_of_fastq_file_paths
+
+
+def move_and_extract_each_fastq_gz_to_corresponding_subdirectory(wkd_head_path, list_of_fastq_gz_file_paths, sequence_file_directory):
+    list_of_fastq_file_paths = []
+    for fastq_gz_path in list_of_fastq_gz_file_paths:
+        target_path = move_fastq_gz_file_to_wkd(fastq_gz_path, wkd_head_path)
+        extract_fastq_gz_in_new_directory(target_path)
+        list_of_fastq_file_paths.append(target_path)
+
+
+
+def extract_fastq_gz_in_new_directory(target_path):
+    subprocess.run(['gunzip', f'{target_path}'])
+
+
+def move_fastq_gz_file_to_wkd(fastq_gz_path, wkd_head_path):
+    file_name = fastq_gz_path.split('/')[-1]
+    site = fastq_gz_path.replace('fastq.gz', '').split('_')[0]
+    sample = fastq_gz_path.replace('fastq.gz', '').split('_')[1]
+    target_path = os.path.join(wkd_head_path, site, sample, file_name)
+    subprocess.run(['mv', f'{fastq_gz_path}', f'{target_path}'],
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return target_path
+
+def setup_directory_system_to_work_within():
+    """ There are three sites and 12 samples within each site. As such we will create a directory system that reflects
+    this. Its location will be relative to the sequence_file_directory"""
+
+    new_directory_head = create_directory_head()
+
+    create_sub_directories_within_directory_head(new_directory_head)
+    return new_directory_head
+
+
+def create_directory_head():
+    new_directory_head = os.path.abspath((os.path.join(Path(__file__).parents[1], 'working_directory')))
+    os.makedirs(new_directory_head)
+    return new_directory_head
+
+
+def create_sub_directories_within_directory_head(new_directory_head):
+    for i in range(1, 5):
+        for j in range(1, 13):
+            if j < 10:
+                zero_str = '0'
+            else:
+                zero_str = ''
+            os.makedirs(os.path.join(new_directory_head, f'KB0{i}', f'BC{zero_str}{j}'))
+
+
+def get_list_of_fasta_gz_files(sequence_file_directory):
+
+    return [
+        file_path for file_path in return_list_of_file_paths_in_directory(sequence_file_directory)
+        if file_path.endswith('fastq.gz')
+    ]
 
 def create_fasta_from_fastq_with_certain_primer_seq():
     fastq_file = read_defined_file_to_list('/home/humebc/projects/carradec_nanopore/KBS1/BC01.fastq')
@@ -255,6 +315,5 @@ def pull_out_symbiodinium_seqs_from_fastq(required_symbiodinium_matches):
     return new_fasta
 
 
-
-move_and_rename_carradec_files()
+do_analysis()
 
