@@ -1,56 +1,7 @@
 import os
 import subprocess
 from collections import defaultdict
-
-###### Generic functions ######
-def readDefinedFileToList(filename):
-    tempList = []
-    with open(filename, mode='r') as reader:
-        tempList = [line.rstrip() for line in reader]
-    return tempList
-
-def writeListToDestination(destination, listToWrite):
-    #print('Writing list to ' + destination)
-    try:
-        os.makedirs(os.path.dirname(destination))
-    except FileExistsError:
-        pass
-
-    with open(destination, mode='w') as writer:
-        i = 0
-        while i < len(listToWrite):
-            if i != len(listToWrite)-1:
-                writer.write(listToWrite[i] + '\n')
-            elif i == len(listToWrite)-1:
-                writer.write(listToWrite[i])
-            i += 1
-
-def createDictFromFasta(fastaList):
-    tempDict = {}
-    i = 0
-    while i < len(fastaList):
-        sequence = fastaList[i][1:]
-        tempDict[sequence] = fastaList[i + 1]
-        i += 2
-    return tempDict
-
-def remove_annotations_from_fasta(scrapped_seq_fasta_path):
-    temp_fasta = []
-    fasta_to_clean = readDefinedFileToList(scrapped_seq_fasta_path)
-    for i in range(len(fasta_to_clean) - 1):
-        if fasta_to_clean[i]:
-            if fasta_to_clean[i][0] == '>' and fasta_to_clean[i + 1]:
-                temp_fasta.extend([fasta_to_clean[i].split('|')[0], fasta_to_clean[i+1]])
-    return temp_fasta
-
-def createNoSpaceFastaFile(fastaList):
-    tempList = []
-    i = 0
-    while i < len(fastaList):
-        tempList.extend([fastaList[i].split('\t')[0], fastaList[i+1]])
-        i += 2
-    return tempList
-###############################
+from hume_core_functions import *
 
 # move all fastq files into a single folder and append a name that refers to the site to make them unique
 def move_and_rename_carradec_files():
@@ -86,35 +37,22 @@ def move_and_rename_carradec_files():
 # do this independent of bio python
 # it looks like they have used LaJeunesses primers here.
 
-def create_fasta_from_fastq_with_certain_seq():
-    fastq_file = readDefinedFileToList('/home/humebc/projects/carradec_nanopore/KBS1/BC01.fastq')
+def create_fasta_from_fastq_with_certain_primer_seq():
+    fastq_file = read_defined_file_to_list('/home/humebc/projects/carradec_nanopore/KBS1/BC01.fastq')
     counter = 0
     fasta_out = []
 
     for i  in range(len(fastq_file)):
-        if fastq_file[i][0] == '@':
+        if fastq_file[i].startswith('@'):
+            get_name_from_fastq_def_line
             if i < len(fastq_file) - 1:
                 if 'AATGGCCTCCTGAACGTG' in fastq_file[i+1]:
                     fasta_out.extend(['>seq_{}'.format(counter), fastq_file[i+1]])
                     counter += 1
 
     # write out to have a look at and find the
-    writeListToDestination('/home/humebc/projects/carradec_nanopore/python_code/sample.fasta', fasta_out)
+    write_list_to_destination('/home/humebc/projects/carradec_nanopore/python_code/sample.fasta', fasta_out)
 
-def create_fasta_from_fastq(path_to_fastq):
-    fastq_file = readDefinedFileToList(path_to_fastq)
-    counter = 0
-    fasta_out = []
-
-    for i  in range(len(fastq_file)):
-        if fastq_file[i][0] == '@':
-            if i < len(fastq_file) - 2:
-                if fastq_file[i+2][0] == '+':
-                    fasta_out.extend(['>seq_{}'.format(counter), fastq_file[i+1]])
-                    counter += 1
-
-    # write out to have a look at and find the
-    return fasta_out
 
 # create_fasta_from_fastq()
 
@@ -318,5 +256,5 @@ def pull_out_symbiodinium_seqs_from_fastq(required_symbiodinium_matches):
 
 
 
-pull_out_symbiodinium_seqs_from_fastq(2)
+move_and_rename_carradec_files()
 
