@@ -1,28 +1,42 @@
 import os
+import subprocess
 
 class MothurAnalysis:
 
     def __init__(
             self, sequence_collection=None,  input_dir=None, output_dir=None, name=None,
             fastq_gz_fwd_path=None, fastq_gz_rev_path=None,  fasta_path=None,
-             name_file_path=None, mothur_execution_string='mothur', auto_convert_fastq_to_fasta=True):
+             name_file_path=None, mothur_execution_path='mothur', auto_convert_fastq_to_fasta=True,
+            pcr_fwd_primer=None, pcr_rev_primer=None, pcr_oligo_file_path=None,
+            pcr_fwd_primer_mismatch=2, pcr_rev_primer_mismatch=2, pcr_analysis_name=None, num_processors=10
+            ):
 
-        self.convert_fastq_sequence_collection_to_fasta_type(auto_convert_fastq_to_fasta, sequence_collection)
-        if name is None:
-            self.name = sequence_collection.name
-        else:
-            self.name = name
-        if sequence_collection.file_type == 'fastq':
-            if fastq_gz_rev_path or fastq_gz_fwd_path:
-                raise ValueError(
-                    'Please create a MothurAnalysis from either a sequence_collection OR a pair of fastq_gz files')
-            else:
-                self.sequence_collection = sequence_collection
-        else:
-            raise ValueError(
-                'Something has gone wrong.\n'
-                'SesquenceCollection is still of type fastq despite attempts at conversion to fastq.')
-        self.exec_str = mothur_execution_string
+        self.setup_core_attributes(auto_convert_fastq_to_fasta, fasta_path, fastq_gz_fwd_path, fastq_gz_rev_path,
+                                   input_dir, mothur_execution_path, name, name_file_path, output_dir,
+                                   sequence_collection, num_processors)
+
+
+        self.setup_pcr_analysis_attributes(pcr_analysis_name, pcr_fwd_primer, pcr_fwd_primer_mismatch,
+                                           pcr_oligo_file_path, pcr_rev_primer, pcr_rev_primer_mismatch)
+
+    def setup_core_attributes(self, auto_convert_fastq_to_fasta, fasta_path, fastq_gz_fwd_path, fastq_gz_rev_path,
+                              input_dir, mothur_execution_path, name, name_file_path, output_dir,
+                              sequence_collection, num_processors):
+
+        self.verify_that_is_either_sequence_collection_or_fastq_pair(fastq_gz_fwd_path, fastq_gz_rev_path,
+                                                                 sequence_collection)
+
+        if sequence_collection is not None:
+            self.setup_sequence_collection_attribute(auto_convert_fastq_to_fasta, name, sequence_collection)
+        elif sequence_collection is None:
+            self.setup_fastq_attributes(fastq_gz_fwd_path, fastq_gz_rev_path)
+
+        self.setup_remainder_of_core_attributes(fasta_path, input_dir, mothur_execution_path, name_file_path,
+                                                output_dir, sequence_collection, num_processors)
+
+    def setup_remainder_of_core_attributes(self, fasta_path, input_dir, mothur_execution_path, name_file_path,
+                                           output_dir, sequence_collection, num_processors):
+        self.exec_path = mothur_execution_path
         if input_dir is None:
             self.input_dir = os.path.dirname(sequence_collection.file_path)
         else:
@@ -31,38 +45,195 @@ class MothurAnalysis:
             self.output_dir = os.path.dirname(sequence_collection.file_path)
         else:
             self.output_dir = input_dir
+
+        self.name_file_path = name_file_path
+        self.mothur_batch_file_path = None
+        self.processors = num_processors
+
+    def setup_fastq_attributes(self, fastq_gz_fwd_path, fastq_gz_rev_path):
         self.fastq_gz_fwd_path = fastq_gz_fwd_path
         self.fastq_gz_rev_path = fastq_gz_rev_path
-        self.fasta_path = fasta_path
-        self.name_file_path = name_file_path
+        self.sequence_collection = None
+        self.fasta_path = None
+
+    def setup_sequence_collection_attribute(self, auto_convert_fastq_to_fasta, name, sequence_collection):
+        self.fastq_gz_fwd_path = None
+        self.fastq_gz_rev_path = None
+        if sequence_collection.file_type == 'fastq':
+            self.convert_to_fasta_or_raise_value_error(auto_convert_fastq_to_fasta, sequence_collection)
+        if name is None:
+            self.name = sequence_collection.name
+        else:
+            self.name = name
+        self.sequence_collection = sequence_collection
+        self.fasta_path = self.sequence_collection.file_path
+
+    def convert_to_fasta_or_raise_value_error(self, auto_convert_fastq_to_fasta, sequence_collection):
+        if auto_convert_fastq_to_fasta:
+            print('SequenceCollection must be of type fasta\n. Running SeqeunceCollection.convert_to_fasta.\n')
+            sequence_collection.convert_to_fasta()
+        else:
+            ValueError('SequenceCollection must be of type fasta. You can use the SequenceCollection')
+
+    def verify_that_is_either_sequence_collection_or_fastq_pair(self, fastq_gz_fwd_path, fastq_gz_rev_path,
+                                                            sequence_collection):
+        if sequence_collection and (fastq_gz_fwd_path or fastq_gz_rev_path):
+            raise ValueError(
+                'Please create a MothurAnalysis from either a sequence_collection OR a pair of fastq_gz files.\n'
+                'MothurAnalysis.from_pair_of_fastq_gz_files or MothurAnalysis.from_sequence_collection')
+
+    def setup_pcr_analysis_attributes(self, pcr_analysis_name, pcr_fwd_primer, pcr_fwd_primer_mismatch,
+                                      pcr_oligo_file_path, pcr_rev_primer, pcr_rev_primer_mismatch):
+        if pcr_analysis_name:
+            if pcr_analysis_name.lower() in ['symvar', 'sym_var']:
+                self.pcr_fwd_primer = 'GAATTGCAGAACTCCGTGAACC'
+                self.rev_primer = 'GAATTGCAGAACTCCGTGAACC',
+
+            elif pcr_analysis_name.lower() in ['laj', 'lajeunesse']:
+                self.pcr_fwd_primer = 'GAATTGCAGAACTCCGTG'
+                self.pcr_rev_primer = 'CGGGTTCWCTTGTYTGACTTCATGC'
+            else:
+                raise ValueError(
+                    'pcr_analysis_name \'{}\' is not recognised.\nOptions are \'symvar\' or \'lajeunesse\'.'
+                )
+        else:
+            self.pcr_fwd_primer = pcr_fwd_primer
+            self.pcr_rev_primer = pcr_rev_primer
+        self.pcr_fwd_primer_mismatch = pcr_fwd_primer_mismatch
+        self.pcr_rev_primer_mismatch = pcr_rev_primer_mismatch
+        self.pcr_oligo_file_path = pcr_oligo_file_path
 
     @classmethod
     def from_pair_of_fastq_gz_files(cls, name, fastq_gz_fwd_path, fastq_gz_rev_path,
-                                    output_dir=None, mothur_execution_string='mothur'):
-        return cls(name=name, sequence_collection=None, mothur_execution_string=mothur_execution_string,
+                                    output_dir=None, mothur_execution_path='mothur', num_processors=10):
+        return cls(name=name, sequence_collection=None, mothur_execution_path=mothur_execution_path,
                    input_dir=os.path.dirname(os.path.abspath(fastq_gz_fwd_path)), output_dir=output_dir,
                    fastq_gz_fwd_path=fastq_gz_fwd_path, fastq_gz_rev_path=fastq_gz_rev_path,
-                   fasta_path=None, name_file_path=None)
+                   fasta_path=None, name_file_path=None, num_processors=num_processors)
 
     @classmethod
-    def from_sequence_collection(cls, name, sequence_collection, input_dir,
-                                 output_dir, mothur_execution_string='mothur'):
+    def from_sequence_collection(cls, sequence_collection, name=None, input_dir=None,
+                                 output_dir=None, mothur_execution_path='mothur',
+                                 pcr_fwd_primer=None, pcr_rev_primer=None, pcr_oligo_file_path=None,
+                                 pcr_fwd_primer_mismatch=2, pcr_rev_primer_mismatch=2, pcr_analysis_name=None, num_processors=10):
         return cls(
             name=name, sequence_collection=sequence_collection, input_dir=input_dir,
-            output_dir=output_dir, mothur_execution_string=mothur_execution_string
+            output_dir=output_dir, mothur_execution_path=mothur_execution_path, pcr_fwd_primer=pcr_fwd_primer,
+            pcr_rev_primer=pcr_rev_primer, pcr_oligo_file_path=pcr_oligo_file_path, pcr_fwd_primer_mismatch=pcr_fwd_primer_mismatch,
+            pcr_rev_primer_mismatch=pcr_rev_primer_mismatch, pcr_analysis_name=pcr_analysis_name, num_processors=num_processors
         )
 
-    @staticmethod
-    def convert_fastq_sequence_collection_to_fasta_type(auto_convert_fastq_to_fasta, sequence_collection):
-        if sequence_collection.file_type == 'fastq':
-            if not auto_convert_fastq_to_fasta:
-                ValueError('SequenceCollection must be of type fasta. You can use the SequenceCollection')
-            elif auto_convert_fastq_to_fasta:
-                print('SequenceCollection must be of type fasta\n. Running SeqeunceCollection.convert_to_fasta.\n')
-                sequence_collection.convert_to_fasta()
+
+    def execute_pcr(self, do_reverse_pcr_as_well=False):
+        """This will perform a mothur pcr.seqs analysis.
+        if do_reverse_pcr__as_well is true then we will also reverse complement the fasta a perform the
+        """
+
+        self.pcr_validate_attributes_are_set()
+
+        self.pcr_make_and_write_oligo_file_if_doesnt_exist()
+
+        self.pcr_make_and_write_mothur_batch_file()
+
+        completed_process = self.run_mothur_batch_file()
+
+        stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
+
+        fwd_output_scrapped_fasta_path, fwd_output_good_fasta_path = self.pcr_extract_good_and_scrap_output_paths(
+            stdout_string_as_list
+        )
+
+        remove_primer_mismatch_annotations_from_fasta(fwd_output_scrapped_fasta_path)
+        remove_primer_mismatch_annotations_from_fasta(fwd_output_good_fasta_path)
 
 
+        # then we should clean up the output_bad_fasta
+        # then reverse complement it
+        # then do a pcr on it again using the same oligo set as the first run
+        # we should then get the output from that pcr and add it to the previous run
+        if do_reverse_pcr_as_well:
+            self.fasta_path = fwd_output_scrapped_fasta_path
+            self.pcr_make_and_write_mothur_batch_file()
+            completed_process = self.run_mothur_batch_file()
+            stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
+            rev_output_scrapped_fasta_path, rev_output_good_fasta_path = self.pcr_extract_good_and_scrap_output_paths(
+                stdout_string_as_list
+            )
+            remove_primer_mismatch_annotations_from_fasta(rev_output_good_fasta_path)
+            # now create a fasta that is the good fasta from both of the pcrs. this will become the new mothuranalysis fasta.
+            self.pcr_generate_new_fasta_path(suffix_to_be_replaced='.rc.fasta',
+                                             replacement_string='.pcr.combined.fasta')
+            combine_two_fasta_files(path_one=fwd_output_good_fasta_path, path_two=rev_output_good_fasta_path, path_for_combined=self.fasta_path)
 
+        # todo do if not do_reverse_pcr_as_well
+
+
+    def pcr_generate_new_fasta_path(self, suffix_to_be_replaced, replacement_string):
+        self.fasta_path = self.fasta_path.replace(suffix_to_be_replaced, replacement_string)
+
+    def pcr_extract_good_and_scrap_output_paths(self, stdout_string_as_list):
+        output_good_fasta_path = None
+        output_scrapped_fasta_path = None
+        for i in range(len(stdout_string_as_list)):
+            print(stdout_string_as_list[i])
+            if 'Output Files Names' in stdout_string_as_list[i]:
+                output_good_fasta_path = stdout_string_as_list[i + 1]
+                output_scrapped_fasta_path = stdout_string_as_list[i + 3]
+        return output_scrapped_fasta_path, output_good_fasta_path
+
+    def pcr_clean_output_scrap_file(self, fasta_to_clean_path):
+        cleaned_scrapped_fasta = remove_primer_mismatch_annotations_from_fasta(fwd_output_scrapped_fasta_path)
+        write_list_to_destination(fwd_output_scrapped_fasta_path, cleaned_scrapped_fasta)
+
+    def run_mothur_batch_file(self):
+        completed_process = subprocess.run(
+            [self.exec_path, self.mothur_batch_file_path],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        return completed_process
+
+    def pcr_make_and_write_mothur_batch_file(self):
+        mothur_batch_file = self.pcr_make_mothur_batch_file()
+        self.mothur_batch_file_path = os.path.join(self.input_dir, 'mothur_batch_file')
+        write_list_to_destination(self.mothur_batch_file_path, mothur_batch_file)
+
+    def pcr_make_mothur_batch_file(self):
+        if self.name_file_path:
+            mothur_batch_file = [
+                f'set.dir(input={self.input_dir})',
+                f'set.dir(output={self.output_dir})',
+                f'pcr.seqs(fasta={self.fasta_path}, name={self.name_file_path}, oligos={self.pcr_oligo_file_path}, '
+                f'pdiffs={self.pcr_fwd_primer_mismatch}, rdiffs={self.pcr_rev_primer_mismatch}, processors={self.processors})'
+            ]
+
+        else:
+            mothur_batch_file = [
+                f'set.dir(input={self.input_dir})',
+                f'set.dir(output={self.output_dir})',
+                f'pcr.seqs(fasta={self.fasta_path}, oligos={self.pcr_oligo_file_path}, '
+                f'pdiffs={self.pcr_fwd_primer_mismatch}, rdiffs={self.pcr_rev_primer_mismatch}, processors={self.processors})'
+            ]
+        return mothur_batch_file
+
+    def pcr_make_and_write_oligo_file_if_doesnt_exist(self):
+        if self.pcr_oligo_file_path is None:
+            oligo_file = [
+                f'forward\t{self.pcr_fwd_primer}',
+                f'reverse\t{self.pcr_rev_primer}'
+            ]
+            self.pcr_oligo_file_path = os.path.join(self.input_dir, 'oligo_file.oligo')
+            write_list_to_destination(self.pcr_oligo_file_path, oligo_file)
+
+    def pcr_validate_attributes_are_set(self):
+        if self.fasta_path is None:
+            raise ValueError('fasta_path is None. A valid fasta_path is required to perform the pcr method.')
+        if self.pcr_fwd_primer is None or self.pcr_rev_primer is None:
+            if self.pcr_fwd_primer is None and self.pcr_rev_primer is None:
+                raise ValueError('Please set fwd_primer and rev_primer: ')
+            elif self.pcr_fwd_primer is None:
+                raise ValueError('Please set fwd_primer.')
+            elif self.pcr_rev_primer is None:
+                raise ValueError('Please set fwd_primer.')
 
 
 class SequenceCollection:
@@ -129,7 +300,7 @@ class SequenceCollection:
         return list_of_nuleotide_sequence_objects
 
     def is_fastq_defline(self, fastsq_file, index_value):
-        if fastsq_file[index_value].startswith('@') and fastsq_file[index_value + 1][0] == '+':
+        if fastsq_file[index_value].startswith('@') and fastsq_file[index_value + 2][0] == '+':
             return True
 
     def create_new_nuc_seq_object_and_add_to_list(self, fastq_file_as_list, index_val, list_of_nuleotide_sequence_objects):
@@ -183,6 +354,29 @@ def return_list_of_file_paths_in_directory(directory_to_list):
         list_of_file_paths_in_directory.extend([os.path.join(directory_to_list, file_name) for file_name in filenames])
         return list_of_file_paths_in_directory
 
+def return_list_of_directory_names_in_directory(directory_to_list):
+    """
+        return a list that contains the directory names found in the specified directory
+        :param directory_to_list: the directory that the directory names should be returned from
+        :return: list of strings that are the directory names found in the directory_to_list
+        """
+    list_of_directory_names_in_directory = []
+    for (dirpath, dirnames, filenames) in os.walk(directory_to_list):
+        list_of_directory_names_in_directory.extend(dirnames)
+        return list_of_directory_names_in_directory
+
+
+def return_list_of_directory_paths_in_directory(directory_to_list):
+    """
+        return a list that contains the full paths of each of the directories found in the specified directory
+        :param directory_to_list: the directory that the directory paths should be returned from
+        :return: list of strings that are the directory paths found in the directory_to_list
+        """
+    list_of_directory_paths_in_directory = []
+    for (dirpath, dirnames, filenames) in os.walk(directory_to_list):
+        list_of_directory_paths_in_directory.extend([os.path.join(directory_to_list, dir_name) for dir_name in dirnames])
+        return list_of_directory_paths_in_directory
+
 def read_defined_file_to_list(filename):
     with open(filename, mode='r') as reader:
         return [line.rstrip() for line in reader]
@@ -220,14 +414,15 @@ def create_dict_from_fasta(fasta_list):
     return temp_dict
 
 
-def remove_annotations_from_fasta(scrapped_seq_fasta_path):
+def remove_primer_mismatch_annotations_from_fasta(fasta_path):
     temp_fasta = []
-    fasta_to_clean = read_defined_file_to_list(scrapped_seq_fasta_path)
+    fasta_to_clean = read_defined_file_to_list(fasta_path)
     for i in range(len(fasta_to_clean) - 1):
         if fasta_to_clean[i]:
             if fasta_to_clean[i][0] == '>' and fasta_to_clean[i + 1]:
                 temp_fasta.extend([fasta_to_clean[i].split('|')[0], fasta_to_clean[i+1]])
-    return temp_fasta
+    write_list_to_destination(fasta_path, temp_fasta)
+
 
 
 def create_no_space_fasta_file(fasta_list):
@@ -237,3 +432,9 @@ def create_no_space_fasta_file(fasta_list):
         temp_list.extend([fasta_list[i].split('\t')[0], fasta_list[i + 1]])
         i += 2
     return temp_list
+
+def combine_two_fasta_files(path_one, path_two, path_for_combined):
+    one_file_one = read_defined_file_to_list(path_one)
+    one_file_two = read_defined_file_to_list(path_two)
+    combined_fata_file = one_file_one.extend(one_file_two)
+    write_list_to_destination(path_for_combined, combined_fata_file)
