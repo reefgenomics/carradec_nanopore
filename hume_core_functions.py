@@ -3,15 +3,34 @@ import os
 class MothurAnalysis:
 
     def __init__(
-            self, name, sequence_collection,  input_dir, output_dir,
+            self, sequence_collection=None,  input_dir=None, output_dir=None, name=None,
             fastq_gz_fwd_path=None, fastq_gz_rev_path=None,  fasta_path=None,
-             name_file_path=None, mothur_execution_string='mothur'):
+             name_file_path=None, mothur_execution_string='mothur', auto_convert_fastq_to_fasta=True):
 
-        self.name = name
-        self.sequence_collection = sequence_collection
+        self.convert_fastq_sequence_collection_to_fasta_type(auto_convert_fastq_to_fasta, sequence_collection)
+        if name is None:
+            self.name = sequence_collection.name
+        else:
+            self.name = name
+        if sequence_collection.file_type == 'fastq':
+            if fastq_gz_rev_path or fastq_gz_fwd_path:
+                raise ValueError(
+                    'Please create a MothurAnalysis from either a sequence_collection OR a pair of fastq_gz files')
+            else:
+                self.sequence_collection = sequence_collection
+        else:
+            raise ValueError(
+                'Something has gone wrong.\n'
+                'SesquenceCollection is still of type fastq despite attempts at conversion to fastq.')
         self.exec_str = mothur_execution_string
-        self.input_dir = input_dir
-        self.output_dir = output_dir
+        if input_dir is None:
+            self.input_dir = os.path.dirname(sequence_collection.file_path)
+        else:
+            self.input_dir = input_dir
+        if output_dir is None:
+            self.output_dir = os.path.dirname(sequence_collection.file_path)
+        else:
+            self.output_dir = input_dir
         self.fastq_gz_fwd_path = fastq_gz_fwd_path
         self.fastq_gz_rev_path = fastq_gz_rev_path
         self.fasta_path = fasta_path
@@ -26,13 +45,23 @@ class MothurAnalysis:
                    fasta_path=None, name_file_path=None)
 
     @classmethod
-    def from_sequence_collection(cls, name, sequence_collection, input_dir, output_dir,
-                                 mothur_execution_string='mothur'):
-        if sequence_collection.file_type == 'fasta':
-            fasta_path = sequence_collection.file_path
-        else:
-            raise ValueError('SequenceCollection must be of type fasta')
-        return cls(name=name, sequence_collection=sequence_collection, input_dir=input_dir, output_dir=output_dir)
+    def from_sequence_collection(cls, name, sequence_collection, input_dir,
+                                 output_dir, mothur_execution_string='mothur'):
+        return cls(
+            name=name, sequence_collection=sequence_collection, input_dir=input_dir,
+            output_dir=output_dir, mothur_execution_string=mothur_execution_string
+        )
+
+    @staticmethod
+    def convert_fastq_sequence_collection_to_fasta_type(auto_convert_fastq_to_fasta, sequence_collection):
+        if sequence_collection.file_type == 'fastq':
+            if not auto_convert_fastq_to_fasta:
+                ValueError('SequenceCollection must be of type fasta. You can use the SequenceCollection')
+            elif auto_convert_fastq_to_fasta:
+                print('SequenceCollection must be of type fasta\n. Running SeqeunceCollection.convert_to_fasta.\n')
+                sequence_collection.convert_to_fasta()
+
+
 
 
 
@@ -48,8 +77,12 @@ class SequenceCollection:
         self.file_type = self.infer_file_type()
         self.sequence_collection = self.generate_sequence_collection()
         if auto_convert_to_fasta:
-            self.file_path = self.write_out_as_fasta()
-            self.file_type = 'fasta'
+            self.convert_to_fasta()
+
+
+    def convert_to_fasta(self):
+        self.file_path = self.write_out_as_fasta()
+        self.file_type = 'fasta'
 
     def __len__(self):
         return(len(self.sequence_collection))

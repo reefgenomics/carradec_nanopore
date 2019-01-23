@@ -28,7 +28,10 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
     create sequence collections from each of the fastq
     """
     for fastq_to_process_path in list_of_fastq_file_paths:
-        # todo generate a sequence_collection file
+        sequence_collection = SequenceCollection(
+            name=fastq_to_process_path.split('/')[-1], path_to_file=fastq_to_process_path
+        )
+        mothur_analysis = MothurAnalysis(name=sequence_collection)
 
 
 
@@ -36,13 +39,12 @@ def move_fastq_gz_files_to_new_subdirectories_and_decompress():
     sequence_file_directory = '/home/humebc/projects/carradec_nanopore/all_reads'
     list_of_fastq_gz_file_paths = get_list_of_fasta_gz_files(sequence_file_directory)
     wkd_head_path = setup_directory_system_to_work_within()
-    list_of_fastq_file_paths = move_and_extract_each_fastq_gz_to_corresponding_subdirectory(wkd_head_path,
-                                                                                            list_of_fastq_gz_file_paths,
-                                                                                            sequence_file_directory)
+    list_of_fastq_file_paths = move_and_extract_each_fastq_gz_to_corresponding_subdirectory(
+        wkd_head_path, list_of_fastq_gz_file_paths)
     return list_of_fastq_file_paths
 
 
-def move_and_extract_each_fastq_gz_to_corresponding_subdirectory(wkd_head_path, list_of_fastq_gz_file_paths, sequence_file_directory):
+def move_and_extract_each_fastq_gz_to_corresponding_subdirectory(wkd_head_path, list_of_fastq_gz_file_paths):
     list_of_fastq_file_paths = []
     for fastq_gz_path in list_of_fastq_gz_file_paths:
         target_path = move_fastq_gz_file_to_wkd(fastq_gz_path, wkd_head_path)
