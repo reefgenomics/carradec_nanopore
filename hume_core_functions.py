@@ -137,10 +137,8 @@ class MothurAnalysis:
 
         completed_process = self.run_mothur_batch_file()
 
-        stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
-
         fwd_output_scrapped_fasta_path, fwd_output_good_fasta_path = self.pcr_extract_good_and_scrap_output_paths(
-            stdout_string_as_list
+            completed_process
         )
 
         remove_primer_mismatch_annotations_from_fasta(fwd_output_scrapped_fasta_path)
@@ -153,37 +151,60 @@ class MothurAnalysis:
         # we should then get the output from that pcr and add it to the previous run
         if do_reverse_pcr_as_well:
             self.fasta_path = fwd_output_scrapped_fasta_path
+            self.rev_comp_make_and_write_mothur_batch_file()
+            completed_process = self.run_mothur_batch_file()
+            self.fasta_path = self.rev_comp_extract_new_fasta_path(completed_process)
             self.pcr_make_and_write_mothur_batch_file()
             completed_process = self.run_mothur_batch_file()
-            stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
-            rev_output_scrapped_fasta_path, rev_output_good_fasta_path = self.pcr_extract_good_and_scrap_output_paths(
-                stdout_string_as_list
-            )
+            rev_output_good_fasta_path = self.pcr_extract_good_and_scrap_output_paths(completed_process)[1]
             remove_primer_mismatch_annotations_from_fasta(rev_output_good_fasta_path)
+            self.fasta_path = rev_output_good_fasta_path.replace('.scrap.pcr.rc.pcr', '.pcr.combined')
             # now create a fasta that is the good fasta from both of the pcrs. this will become the new mothuranalysis fasta.
-            self.pcr_generate_new_fasta_path(suffix_to_be_replaced='.rc.fasta',
-                                             replacement_string='.pcr.combined.fasta')
-            combine_two_fasta_files(path_one=fwd_output_good_fasta_path, path_two=rev_output_good_fasta_path, path_for_combined=self.fasta_path)
 
-        # todo do if not do_reverse_pcr_as_well
+            combine_two_fasta_files(
+                path_one=fwd_output_good_fasta_path,
+                path_two=rev_output_good_fasta_path,
+                path_for_combined=self.fasta_path
+            )
+        else:
+            self.fasta_path = fwd_output_good_fasta_path
 
+        update_sequence_collection_from_fasta_file()
 
-    def pcr_generate_new_fasta_path(self, suffix_to_be_replaced, replacement_string):
-        self.fasta_path = self.fasta_path.replace(suffix_to_be_replaced, replacement_string)
+    def update_sequence_collection_from_fasta_file(self):
+        self.sequence_collection.generate_sequence_collection(self.fasta_path)
 
-    def pcr_extract_good_and_scrap_output_paths(self, stdout_string_as_list):
+    def rev_comp_make_and_write_mothur_batch_file(self):
+        mothur_batch_file = self.make_rev_complement_mothur_batch_file()
+        self.mothur_batch_file_path = os.path.join(self.input_dir, 'mothur_batch_file')
+        write_list_to_destination(self.mothur_batch_file_path, mothur_batch_file)
+
+    def make_rev_complement_mothur_batch_file(self):
+        mothur_batch_file = [
+            f'set.dir(input={self.input_dir})',
+            f'set.dir(output={self.output_dir})',
+            f'reverse.seqs(fasta={self.fasta_path})'
+        ]
+        return mothur_batch_file
+
+    def rev_comp_extract_new_fasta_path(self, completed_process):
+        stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
+        for i in range(len(stdout_string_as_list)):
+            print(stdout_string_as_list[i])
+            if 'Output File Names' in stdout_string_as_list[i]:
+                return stdout_string_as_list[i+1]
+
+    def pcr_extract_good_and_scrap_output_paths(self, completed_process):
+        stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
         output_good_fasta_path = None
         output_scrapped_fasta_path = None
         for i in range(len(stdout_string_as_list)):
             print(stdout_string_as_list[i])
-            if 'Output Files Names' in stdout_string_as_list[i]:
+            if 'Output File Names' in stdout_string_as_list[i]:
                 output_good_fasta_path = stdout_string_as_list[i + 1]
                 output_scrapped_fasta_path = stdout_string_as_list[i + 3]
         return output_scrapped_fasta_path, output_good_fasta_path
 
-    def pcr_clean_output_scrap_file(self, fasta_to_clean_path):
-        cleaned_scrapped_fasta = remove_primer_mismatch_annotations_from_fasta(fwd_output_scrapped_fasta_path)
-        write_list_to_destination(fwd_output_scrapped_fasta_path, cleaned_scrapped_fasta)
 
     def run_mothur_batch_file(self):
         completed_process = subprocess.run(
@@ -275,15 +296,18 @@ class SequenceCollection:
     def infer_fasta_path_from_current_fastq_path(self):
         return self.file_path.replace('fastq', 'fasta')
 
-    def generate_sequence_collection(self):
+    def generate_sequence_collection(self, alt_fasta_path=None):
         if self.file_type == 'fasta':
-            return self.parse_fasta_file_and_extract_nucleotide_sequence_objects()
+            return self.parse_fasta_file_and_extract_nucleotide_sequence_objects(alternative_fasta_file_path=alt_fasta_path)
         elif self.file_type == 'fastq':
             return self.parse_fastq_file_and_extract_nucleotide_sequence_objects()
 
-    def parse_fasta_file_and_extract_nucleotide_sequence_objects(self):
+    def parse_fasta_file_and_extract_nucleotide_sequence_objects(self, alternative_fasta_file_path=None):
         list_of_nuleotide_sequence_objects = []
-        fasta_file = read_defined_file_to_list(self.file_path)
+        if alternative_fasta_file_path:
+            fasta_file = read_defined_file_to_list(alternative_fasta_file_path)
+        else:
+            fasta_file = read_defined_file_to_list(self.file_path)
         for i in range(0, len(fasta_file), 2):
             list_of_nuleotide_sequence_objects.append(
                 NucleotideSequence(sequence=fasta_file[i+1], name=fasta_file[i][1:])
@@ -420,7 +444,10 @@ def remove_primer_mismatch_annotations_from_fasta(fasta_path):
     for i in range(len(fasta_to_clean) - 1):
         if fasta_to_clean[i]:
             if fasta_to_clean[i][0] == '>' and fasta_to_clean[i + 1]:
-                temp_fasta.extend([fasta_to_clean[i].split('|')[0], fasta_to_clean[i+1]])
+                if '|' in fasta_to_clean[i]:
+                    temp_fasta.extend([fasta_to_clean[i].split('|')[0], fasta_to_clean[i + 1]])
+                else:
+                    temp_fasta.extend([fasta_to_clean[i].split('\t')[0], fasta_to_clean[i+1]])
     write_list_to_destination(fasta_path, temp_fasta)
 
 
@@ -436,5 +463,5 @@ def create_no_space_fasta_file(fasta_list):
 def combine_two_fasta_files(path_one, path_two, path_for_combined):
     one_file_one = read_defined_file_to_list(path_one)
     one_file_two = read_defined_file_to_list(path_two)
-    combined_fata_file = one_file_one.extend(one_file_two)
-    write_list_to_destination(path_for_combined, combined_fata_file)
+    one_file_one.extend(one_file_two)
+    write_list_to_destination(path_for_combined, one_file_one)

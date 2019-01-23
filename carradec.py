@@ -62,6 +62,11 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         # conduct a primer pcr
         mothur_analysis.execute_pcr(do_reverse_pcr_as_well=True)
 
+        #todo do a size screening very roughly, maybe 100bp (write a new method for this)
+
+        #todo do a symbiodinium blast analysis (write a class for this)
+
+
 def move_fastq_gz_files_to_new_subdirectories_and_decompress():
     sequence_file_directory = '/home/humebc/projects/carradec_nanopore/all_reads'
     list_of_fastq_gz_file_paths = get_list_of_fasta_gz_files(sequence_file_directory)
