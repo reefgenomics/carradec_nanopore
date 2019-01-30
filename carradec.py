@@ -47,7 +47,7 @@ def get_list_of_fastq_files_already_moved():
 
 def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
     """This is the top function for the actual processing of the samples
-    create sequence collections from each of the fastq
+    - Create sequence collections from each of the fastq
     """
     for fastq_to_process_path in list_of_fastq_file_paths:
 
@@ -56,12 +56,12 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         )
         mothur_analysis = MothurAnalysis.from_sequence_collection(
             sequence_collection=new_sequence_collection_from_fastq_file,
-            pcr_analysis_name='lajeunesse', pcr_fwd_primer_mismatch=6, pcr_rev_primer=6, num_processors=20
+            pcr_analysis_name='lajeunesse', pcr_fwd_primer_mismatch=6, pcr_rev_primer_mismatch=6, num_processors=20
         )
 
         # conduct a primer pcr
         mothur_analysis.execute_pcr(do_reverse_pcr_as_well=True)
-
+        apples = 'asdf'
         #todo do a size screening very roughly, maybe 100bp (write a new method for this)
 
         #todo do a symbiodinium blast analysis (write a class for this)

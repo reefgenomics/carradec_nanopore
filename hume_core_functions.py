@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 
 class MothurAnalysis:
 
@@ -158,7 +159,7 @@ class MothurAnalysis:
             completed_process = self.run_mothur_batch_file()
             rev_output_good_fasta_path = self.pcr_extract_good_and_scrap_output_paths(completed_process)[1]
             remove_primer_mismatch_annotations_from_fasta(rev_output_good_fasta_path)
-            self.fasta_path = rev_output_good_fasta_path.replace('.scrap.pcr.rc.pcr', '.pcr.combined')
+            self.make_new_fasta_path_for_fwd_rev_combined(rev_output_good_fasta_path)
             # now create a fasta that is the good fasta from both of the pcrs. this will become the new mothuranalysis fasta.
 
             combine_two_fasta_files(
@@ -169,7 +170,10 @@ class MothurAnalysis:
         else:
             self.fasta_path = fwd_output_good_fasta_path
 
-        update_sequence_collection_from_fasta_file()
+        self.update_sequence_collection_from_fasta_file()
+
+    def make_new_fasta_path_for_fwd_rev_combined(self, rev_output_good_fasta_path):
+        self.fasta_path = rev_output_good_fasta_path.replace('.scrap.pcr.rc.pcr', '.pcr.combined')
 
     def update_sequence_collection_from_fasta_file(self):
         self.sequence_collection.generate_sequence_collection(self.fasta_path)
@@ -196,14 +200,12 @@ class MothurAnalysis:
 
     def pcr_extract_good_and_scrap_output_paths(self, completed_process):
         stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
-        output_good_fasta_path = None
-        output_scrapped_fasta_path = None
         for i in range(len(stdout_string_as_list)):
             print(stdout_string_as_list[i])
             if 'Output File Names' in stdout_string_as_list[i]:
                 output_good_fasta_path = stdout_string_as_list[i + 1]
                 output_scrapped_fasta_path = stdout_string_as_list[i + 3]
-        return output_scrapped_fasta_path, output_good_fasta_path
+                return output_scrapped_fasta_path, output_good_fasta_path
 
 
     def run_mothur_batch_file(self):
@@ -246,6 +248,7 @@ class MothurAnalysis:
             write_list_to_destination(self.pcr_oligo_file_path, oligo_file)
 
     def pcr_validate_attributes_are_set(self):
+        sys.stdout.write(f'\nValidating PCR attributes are set\n')
         if self.fasta_path is None:
             raise ValueError('fasta_path is None. A valid fasta_path is required to perform the pcr method.')
         if self.pcr_fwd_primer is None or self.pcr_rev_primer is None:
@@ -255,6 +258,7 @@ class MothurAnalysis:
                 raise ValueError('Please set fwd_primer.')
             elif self.pcr_rev_primer is None:
                 raise ValueError('Please set fwd_primer.')
+        sys.stdout.write(f'\nPCR attributes: OK\n')
 
 
 class SequenceCollection:
@@ -305,9 +309,8 @@ class SequenceCollection:
     def parse_fasta_file_and_extract_nucleotide_sequence_objects(self, alternative_fasta_file_path=None):
         list_of_nuleotide_sequence_objects = []
         if alternative_fasta_file_path:
-            fasta_file = read_defined_file_to_list(alternative_fasta_file_path)
-        else:
-            fasta_file = read_defined_file_to_list(self.file_path)
+            self.file_path = alternative_fasta_file_path
+        fasta_file = read_defined_file_to_list(self.file_path)
         for i in range(0, len(fasta_file), 2):
             list_of_nuleotide_sequence_objects.append(
                 NucleotideSequence(sequence=fasta_file[i+1], name=fasta_file[i][1:])
