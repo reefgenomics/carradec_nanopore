@@ -84,7 +84,7 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
 
         for blast_output_line in blast_output_file:
             # get the clade of the sequence in question
-            clade_of_seq = blast_output_file.split('\t')[1][-1]
+            clade_of_seq = blast_output_line.split('\t')[1][-1]
             # put the sequence in the respective list
             clade_index = clade_list.index(clade_of_seq)
             sequence_in_question_name = blast_output_line.split('\t')[0]
@@ -96,15 +96,17 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         for i, clade_separated_fasta_list in enumerate(lists_of_clade_separated_seqs):
             clade_in_question = clade_list[i]
             # only do it if we have more than 10 sequencs otherwise don't bother
-            if len(clade_separated_fasta_list) > 10:
+            if len(clade_separated_fasta_list) > 20:
                 # write out the fasta
-                post_blast_fasta_path = os.join(os.path.dir(mothur_analysis.fasta_path), f'symbiodinium_fasta_to_align_clade_{clade_in_question}.fa')
+                post_blast_fasta_path = os.path.join(os.path.dirname(mothur_analysis.fasta_path), f'symbiodinium_fasta_to_align_clade_{clade_in_question}.fa')
                 write_list_to_destination(post_blast_fasta_path, clade_separated_fasta_list)
-                output_path_for_aligned_fasta = os.join(os.path.dir(mothur_analysis.fasta_path), f'symbiodinium_fasta_aligned_clade_{clade_in_question}.fa')
+                output_path_for_aligned_fasta = os.path.join(os.path.dirname(mothur_analysis.fasta_path), f'symbiodinium_fasta_aligned_clade_{clade_in_question}.fa')
 
                 # align the fasta
-                mafft_align_fasta(input_path=post_blast_fasta_path, output_path=output_path_for_aligned_fasta, num_proc=20)
-
+                mafft_align_fasta(
+                    input_path=post_blast_fasta_path, output_path=output_path_for_aligned_fasta,
+                    num_proc=20, method='linsi', iterations=1000)
+                apples = 'asdf'
                 # the alignment path will be located at the given output path
                 # we should have a look at this.
 

@@ -543,9 +543,14 @@ def combine_two_fasta_files(path_one, path_two, path_for_combined):
     one_file_one.extend(one_file_two)
     write_list_to_destination(path_for_combined, one_file_one)
 
-def mafft_align_fasta(input_path, output_path, mafft_exec_string='mafft', num_proc=1):
+def mafft_align_fasta(input_path, output_path, method='auto', mafft_exec_string='mafft', num_proc=1, iterations=1000):
     # TODO add an algorythm argument so that the particular style of alignemtn can be chosen
     # http://plumbum.readthedocs.io/en/latest/local_commands.html#pipelining
     print(f'Aligning {input_path}')
-    mafft = local[f'{mafft_exec_string}']
-    (mafft['--auto', '--thread', f'{num_proc}', input_path] > output_path)()
+    if method == 'auto':
+        mafft = local[f'{mafft_exec_string}']
+        (mafft['--auto', '--thread', f'{num_proc}', input_path] > output_path)()
+    if method == 'linsi':
+        mafft = local[f'{mafft_exec_string}']
+        (mafft['--localpair', '--maxiterate', f'{iterations}', '--thread', f'{num_proc}', input_path] > output_path)()
+    print(f'Writing to {output_path}')
