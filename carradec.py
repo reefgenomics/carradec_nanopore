@@ -77,9 +77,36 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         blastn_analysis.execute_blastn()
         blast_output_file = read_defined_file_to_list(blastn_analysis.output_file_path)
 
-        # get a list of sequences per clade
-        # then work clade by clade and align the sequences
+        fasta_dictionary = create_dict_from_fasta(read_defined_file_to_list(mothur_analysis.fasta_path))
 
+        clade_list = list('ABCDEFGHI')
+        lists_of_clade_separated_seqs = [[] for _ in clade_list]
+
+        for blast_output_line in blast_output_file:
+            # get the clade of the sequence in question
+            clade_of_seq = blast_output_file.split('\t')[1][-1]
+            # put the sequence in the respective list
+            clade_index = clade_list.index(clade_of_seq)
+            sequence_in_question_name = blast_output_line.split('\t')[0]
+            lists_of_clade_separated_seqs[clade_index].extend([f'>{sequence_in_question_name}', f'{fasta_dictionary[sequence_in_question_name]}'])
+
+        # here we have lists of fastas that are separated by clade
+
+        # then work clade by clade and align the sequences
+        for i, clade_separated_fasta_list in enumerate(lists_of_clade_separated_seqs):
+            clade_in_question = clade_list[i]
+            # only do it if we have more than 10 sequencs otherwise don't bother
+            if len(clade_separated_fasta_list) > 10:
+                # write out the fasta
+                post_blast_fasta_path = os.join(os.path.dir(mothur_analysis.fasta_path), f'symbiodinium_fasta_to_align_clade_{clade_in_question}.fa')
+                write_list_to_destination(post_blast_fasta_path, clade_separated_fasta_list)
+                output_path_for_aligned_fasta = os.join(os.path.dir(mothur_analysis.fasta_path), f'symbiodinium_fasta_aligned_clade_{clade_in_question}.fa')
+
+                # align the fasta
+                mafft_align_fasta(input_path=post_blast_fasta_path, output_path=output_path_for_aligned_fasta, num_proc=20)
+
+                # the alignment path will be located at the given output path
+                # we should have a look at this.
 
 
         # here we have a set of sequences that have found matches to some degree with the symClade.fa dictionary
