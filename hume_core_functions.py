@@ -2,6 +2,35 @@ import os
 import subprocess
 import sys
 
+class BlastnAnalysis:
+    def __init__(
+            self, input_file_path, output_file_path, db_path, db_name, max_target_seqs, num_threads,
+            output_format_string="6 qseqid sseqid staxids evalue pident qcovs staxid stitle ssciname", blastn_exec_path='blastn'):
+        self.input_file_path = input_file_path
+        self.output_file_path = output_file_path
+        self.db_path = db_path
+        self.db_name = db_name
+        self.output_format_string = output_format_string
+        self.max_target_seqs = max_target_seqs
+        self.num_threads = num_threads
+        self.blastn_exec_path = blastn_exec_path
+
+    def execute_blastn(self):
+        self.make_and_write_ncbirc_file()
+        self.do_blastn()
+
+    def do_blastn(self):
+        completedProcess = subprocess.run([
+            self.blastn_exec_path, '-out', self.output_file_path, '-outfmt', self.output_format_string, '-query', self.input_file_path, '-db', self.db_path,
+             '-max_target_seqs', f'{self.max_target_seqs}', '-num_threads', f'{self.num_threads}'])
+
+    def make_and_write_ncbirc_file(self):
+        ncbirc_file = self.make_ncbirc_file()
+        write_list_to_destination(os.path.join(os.path.dirname(self.input_file_path), '.ncbirc'), ncbirc_file)
+
+    def make_ncbirc_file(self):
+        return ["[BLAST]", f'BLASTDB={os.path.dirname(self.db_path)}']
+
 class MothurAnalysis:
 
     def __init__(
@@ -124,6 +153,13 @@ class MothurAnalysis:
             pcr_rev_primer_mismatch=pcr_rev_primer_mismatch, pcr_analysis_name=pcr_analysis_name, num_processors=num_processors
         )
 
+    def execute_screen_seqs(self, argument_dictionary):
+        """This will perform a mothur screen.seqs with arguments for minlength and maxlength"""
+        self.screen_seqs_make_and_write_mothur_batch_file(argument_dictionary)
+        completed_process = self.run_mothur_batch_file()
+        good_fasta_path = self.screen_seqs_extract_good_output_path(completed_process)
+        self.fasta_path = good_fasta_path
+        self.update_sequence_collection_from_fasta_file()
 
     def execute_pcr(self, do_reverse_pcr_as_well=False):
         """This will perform a mothur pcr.seqs analysis.
@@ -207,6 +243,14 @@ class MothurAnalysis:
                 output_scrapped_fasta_path = stdout_string_as_list[i + 3]
                 return output_scrapped_fasta_path, output_good_fasta_path
 
+    def screen_seqs_extract_good_output_path(self, completed_process):
+        stdout_string_as_list = completed_process.stdout.decode('utf-8').split('\n')
+        for i in range(len(stdout_string_as_list)):
+            print(stdout_string_as_list[i])
+            if 'Output File Names' in stdout_string_as_list[i]:
+                return stdout_string_as_list[i + 1]
+
+
 
     def run_mothur_batch_file(self):
         completed_process = subprocess.run(
@@ -219,6 +263,35 @@ class MothurAnalysis:
         mothur_batch_file = self.pcr_make_mothur_batch_file()
         self.mothur_batch_file_path = os.path.join(self.input_dir, 'mothur_batch_file')
         write_list_to_destination(self.mothur_batch_file_path, mothur_batch_file)
+
+    def screen_seqs_make_and_write_mothur_batch_file(self, argument_dictionary):
+        mothur_batch_file = self.screen_seqs_make_mothur_batch_file(argument_dictionary)
+        self.mothur_batch_file_path = os.path.join(self.input_dir, 'mothur_batch_file')
+        write_list_to_destination(self.mothur_batch_file_path, mothur_batch_file)
+
+    def screen_seqs_create_additional_arguments_string(self, argument_dict):
+        individual_argument_strings = []
+        for k, v in argument_dict.items():
+            if v is not None:
+                individual_argument_strings.append(f'{k}={v}')
+        return ', '.join(individual_argument_strings)
+
+    def screen_seqs_make_mothur_batch_file(self, argument_dict):
+        additional_arguments_string = self.screen_seqs_create_additional_arguments_string(argument_dict)
+        if self.name_file_path:
+            mothur_batch_file = [
+                f'set.dir(input={self.input_dir})',
+                f'set.dir(output={self.output_dir})',
+                f'screen.seqs(fasta={self.fasta_path}, name={self.name_file_path}, {additional_arguments_string})'
+            ]
+
+        else:
+            mothur_batch_file = [
+                f'set.dir(input={self.input_dir})',
+                f'set.dir(output={self.output_dir})',
+                f'screen.seqs(fasta={self.fasta_path}, {additional_arguments_string})'
+            ]
+        return mothur_batch_file
 
     def pcr_make_mothur_batch_file(self):
         if self.name_file_path:

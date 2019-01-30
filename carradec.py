@@ -59,12 +59,37 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
             pcr_analysis_name='lajeunesse', pcr_fwd_primer_mismatch=6, pcr_rev_primer_mismatch=6, num_processors=20
         )
 
-        # conduct a primer pcr
+        # conduct a primer pcr with the lajeunesse primer set using mismatch at 6 fwd and rev
         mothur_analysis.execute_pcr(do_reverse_pcr_as_well=True)
-        apples = 'asdf'
-        #todo do a size screening very roughly, maybe 100bp (write a new method for this)
 
-        #todo do a symbiodinium blast analysis (write a class for this)
+        # run a rough size screening to get rid of really small reads
+        mothur_analysis.execute_screen_seqs({'maxlength' : '1000', 'minlength' : '100', 'processors' : '20'})
+
+        # todo do a symbiodinium blast analysis (write a class for this)
+        blastn_analysis = BlastnAnalysis(
+            input_file_path=mothur_analysis.fasta_path,
+            output_file_path=os.path.join(os.path.dirname(mothur_analysis.fasta_path), 'blast.out'),
+            db_path='/home/humebc/phylogeneticSoftware/SymPortal_framework/symbiodiniumDB/symClade.fa',
+            db_name='symClade.fa', max_target_seqs=1, num_threads=20,
+            output_format_string="6 qseqid sseqid staxids evalue pident qcovs staxid stitle ssciname",
+            blastn_exec_path='blastn')
+
+        blastn_analysis.execute_blastn()
+        blast_output_file = read_defined_file_to_list(blastn_analysis.output_file_path)
+
+        # get a list of sequences per clade
+        # then work clade by clade and align the sequences
+
+
+
+        # here we have a set of sequences that have found matches to some degree with the symClade.fa dictionary
+        # we should now attempt to align them, within clade
+        # crop them
+        # and then run the algorythm thingy on them.
+        apples = 'asdf'
+
+
+
 
 
 def move_fastq_gz_files_to_new_subdirectories_and_decompress():
