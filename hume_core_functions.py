@@ -562,6 +562,12 @@ def fasta_to_pandas_df(fasta_as_list):
     temp_df.index=seq_names
     return temp_df
 
+def pandas_df_to_fasta(cropped_fasta_df):
+    temp_fasta = []
+    for ind in cropped_fasta_df.index.tolist():
+        temp_fasta.extend(['>{}'.format(ind), ''.join(list(cropped_fasta_df.loc[ind]))])
+    return temp_fasta
+
 def convert_interleaved_to_sequencial_fasta(fasta_as_list):
     new_fasta = []
     temp_seq_string_list = []

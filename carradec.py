@@ -98,13 +98,20 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         # here we have lists of fastas that are separated by clade
 
         # then work clade by clade and align the sequences
-        for i, clade_separated_fasta_list in enumerate(lists_of_clade_separated_seqs):
-            clade_in_question = clade_list[i]
+        for index_of_clade_separated_fasta, clade_separated_fasta_list in enumerate(lists_of_clade_separated_seqs):
+            clade_in_question = clade_list[index_of_clade_separated_fasta]
             # only do it if we have more than 10 sequencs otherwise don't bother
             if len(clade_separated_fasta_list) > 20:
                 # write out the fasta
                 post_blast_fasta_path = os.path.join(os.path.dirname(mothur_analysis.fasta_path), f'symbiodinium_fasta_to_align_clade_{clade_in_question}.fa')
                 write_list_to_destination(post_blast_fasta_path, clade_separated_fasta_list)
+
+
+                # DEBUG check this fasta for name duplicates to see where it is happening
+                list_of_names = []
+                for i in range(0, len(clade_separated_fasta_list), 2):
+                    if clade_separated_fasta_list[i][1:]
+
                 output_path_for_aligned_fasta = os.path.join(os.path.dirname(mothur_analysis.fasta_path), f'symbiodinium_fasta_aligned_clade_{clade_in_question}.fa')
 
                 # align the fasta
@@ -132,7 +139,7 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
                         else:
                             state_score_df.loc[index, i] = 0
 
-                ### this is simply 
+                ### this is simply
                 # # here we have all of the states processed for the alignment
                 # apples = 'asdf'
                 # # now we can go about trying to plot them. I guess just as a scatter on a single point or maybe as the function of the column position
@@ -160,8 +167,36 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
                 # we will convert this back to the consensus value of this value (which will be the highest value in
                 # the state matrix for that (column)
 
+                #TODO there seems to be a name duplication happening at some point. I'm not sure how this is happening.
+
+                # for each sequence in the df
+                seq_number = len(fasta_to_decompose_as_df.index.values.tolist())
+                seq_count = 0
+                try:
+                    for sequence_name_index in fasta_to_decompose_as_df.index.values.tolist():
+                        seq_count += 1
+                        print(f'sequence {seq_count} our of {seq_number}')
+                        seq_to_check_as_series = fasta_to_decompose_as_df.loc[sequence_name_index]
+                        # for each nucleotide in the sequence
+                        for i in list(seq_to_check_as_series.index.values):
+                            # here we can look at a given nuclotide and look it up in the state table and see if it is above the threshold
+                            current_nucleotide_at_pos_in_seq = seq_to_check_as_series[i]
+                            current_state_score = state_score_df.loc[current_nucleotide_at_pos_in_seq, i]
+                            if current_state_score < 300:
+                                # then this will need changing to the highest scoring state of the column
+                                #idxmax
+                                high_scoring_nucleotide_for_column_in_question = state_score_df[i].idxmax()
+                                fasta_to_decompose_as_df.loc[sequence_name_index, i] = high_scoring_nucleotide_for_column_in_question
+                except:
+                    apples = 'asdf'
 
 
+                # for the fasta that we are working on it should now have been fully decomposed with the 300 cutoff.
+                # now we should write out the df as a fasta file and take a look at it.
+                decomposed_fasta_as_list = pandas_df_to_fasta(fasta_to_decompose_as_df)
+                output_path_for_decomposed_fasta = os.path.join(os.path.dirname(output_path_for_aligned_fasta), f'decomposed_fasta_clade_{clade_in_question}')
+
+                # this will now need to be uniqued and then plotted up to have a look at it.
         # here we have a set of sequences that have found matches to some degree with the symClade.fa dictionary
         # we should now attempt to align them, within clade
         # crop them
