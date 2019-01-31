@@ -3,6 +3,9 @@ import subprocess
 from collections import defaultdict
 from hume_core_functions import *
 from pathlib import Path
+import matplotlib as mpl
+mpl.use('TkAgg')
+import matplotlib.pyplot as plt
 
 """The ITS2 amplifications have been done with the LaJeunesse primers. The fastq files are located here:
 /home/humebc/projects/carradec_nanopore/all_reads
@@ -50,6 +53,8 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
     - Create sequence collections from each of the fastq
     """
     for fastq_to_process_path in list_of_fastq_file_paths:
+
+
 
         new_sequence_collection_from_fastq_file = SequenceCollection(
             name=fastq_to_process_path.split('/')[-1].replace('.fastq', ''), path_to_file=fastq_to_process_path
@@ -103,12 +108,58 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
                 output_path_for_aligned_fasta = os.path.join(os.path.dirname(mothur_analysis.fasta_path), f'symbiodinium_fasta_aligned_clade_{clade_in_question}.fa')
 
                 # align the fasta
-                mafft_align_fasta(
-                    input_path=post_blast_fasta_path, output_path=output_path_for_aligned_fasta,
-                    num_proc=20, method='linsi', iterations=1000)
+                # this takes some time to do well so let's check to see if the file already exists
+                # if it does, skip doing the alignment again and simply move on to doing the decomposition
+                if not os.path.exists(output_path_for_aligned_fasta):
+                    mafft_align_fasta(
+                        input_path=post_blast_fasta_path, output_path=output_path_for_aligned_fasta,
+                        num_proc=20, method='linsi', iterations=1000)
+
+
+                aligned_fasta_for_decomposition_interleaved = read_defined_file_to_list(output_path_for_aligned_fasta)
+                aligned_fasta_for_decomposition = convert_interleaved_to_sequencial_fasta(aligned_fasta_for_decomposition_interleaved)
+                fasta_to_decompose_as_df = fasta_to_pandas_df(aligned_fasta_for_decomposition)
+                # this df is what we should pass into the method that will do the decomposition
+                # TODO make the below case insensitive just incase we want to decompose non lowercase alignments
+                # create a dataframe that will hold the results to this
+                state_score_df = pd.DataFrame(index=list('-acgt'), columns=list(fasta_to_decompose_as_df))
+                for i in list(fasta_to_decompose_as_df):
+                    column_as_series = fasta_to_decompose_as_df[i]
+                    count_of_unique_values = column_as_series.value_counts()
+                    for index in state_score_df.index.values.tolist():
+                        if index in count_of_unique_values.index:
+                            state_score_df.loc[index, i] = count_of_unique_values[index]
+                        else:
+                            state_score_df.loc[index, i] = 0
+
+                ### this is simply 
+                # # here we have all of the states processed for the alignment
+                # apples = 'asdf'
+                # # now we can go about trying to plot them. I guess just as a scatter on a single point or maybe as the function of the column position
+                # ax1 = plt.subplot()
+                # x_data = []
+                # y_data = []
+                # for i in list(state_score_df):
+                #     x_data.extend([i for _ in range(len(state_score_df.index))])
+                #     y_data.extend(state_score_df[i].values.tolist())
+                #
+                # ax1.hist(y_data, bins=40, color='blue', edgecolor='black')
+                # ax1.set_ylim(0, 200)
+                # plt.show()
+                # ax1.scatter(x=x_data, y=y_data)
+
                 apples = 'asdf'
                 # the alignment path will be located at the given output path
                 # we should have a look at this.
+                # Ok so we can see that there is indeed a break in the data and we can work with a value of about 300
+                # so now we can work through each of the sequeneces (we will skip doing the uniqueing
+                # because we are here in the first place due to the high error rate there are likely to be any unique
+                # sequenecs and so this will save us very little time.
+                # we will now go sequence by sequence through the alignment df and for each of the nucleotides
+                # we can simply do a look up in the state df and unless that is higher than the 300 value then
+                # we will convert this back to the consensus value of this value (which will be the highest value in
+                # the state matrix for that (column)
+
 
 
         # here we have a set of sequences that have found matches to some degree with the symClade.fa dictionary

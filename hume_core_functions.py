@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 from plumbum import local
+import pandas as pd
 
 class BlastnAnalysis:
     def __init__(
@@ -554,3 +555,25 @@ def mafft_align_fasta(input_path, output_path, method='auto', mafft_exec_string=
         mafft = local[f'{mafft_exec_string}']
         (mafft['--localpair', '--maxiterate', f'{iterations}', '--thread', f'{num_proc}', input_path] > output_path)()
     print(f'Writing to {output_path}')
+
+def fasta_to_pandas_df(fasta_as_list):
+    temp_df = pd.DataFrame([list(line) for line in fasta_as_list if not line.startswith('>')])
+    seq_names = [line[1:] for line in fasta_as_list if line.startswith('>')]
+    temp_df.index=seq_names
+    return temp_df
+
+def convert_interleaved_to_sequencial_fasta(fasta_as_list):
+    new_fasta = []
+    temp_seq_string_list = []
+    for i, fasta_line in enumerate(fasta_as_list):
+        if fasta_line.startswith('>'):
+            if temp_seq_string_list:
+                new_fasta.append(''.join(temp_seq_string_list))
+                temp_seq_string_list = []
+                new_fasta.append(fasta_line)
+            else:
+                new_fasta.append(fasta_line)
+        else:
+            temp_seq_string_list.append(fasta_line)
+    new_fasta.append(''.join(temp_seq_string_list))
+    return new_fasta
