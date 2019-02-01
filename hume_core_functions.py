@@ -583,3 +583,12 @@ def convert_interleaved_to_sequencial_fasta(fasta_as_list):
             temp_seq_string_list.append(fasta_line)
     new_fasta.append(''.join(temp_seq_string_list))
     return new_fasta
+
+def remove_gaps_from_fasta(fasta_as_list):
+    gapless_fasta = []
+    for fasta_line in fasta_as_list:
+        if fasta_line.startswith('>'):
+            gapless_fasta.append(fasta_line)
+        else:
+            gapless_fasta.append(fasta_line.replace('-', ''))
+    return gapless_fasta

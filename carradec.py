@@ -87,14 +87,19 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         clade_list = list('ABCDEFGHI')
         lists_of_clade_separated_seqs = [[] for _ in clade_list]
 
+        name_of_sequences_already_added = []
         for blast_output_line in blast_output_file:
             # get the clade of the sequence in question
             clade_of_seq = blast_output_line.split('\t')[1][-1]
             # put the sequence in the respective list
             clade_index = clade_list.index(clade_of_seq)
             sequence_in_question_name = blast_output_line.split('\t')[0]
-            lists_of_clade_separated_seqs[clade_index].extend([f'>{sequence_in_question_name}', f'{fasta_dictionary[sequence_in_question_name]}'])
-
+            # first check that we haven't already added the sequence
+            if sequence_in_question_name not in name_of_sequences_already_added:
+                name_of_sequences_already_added.append(sequence_in_question_name)
+                lists_of_clade_separated_seqs[clade_index].extend([f'>{sequence_in_question_name}', f'{fasta_dictionary[sequence_in_question_name]}'])
+            else:
+                this = 'asdf'
         # here we have lists of fastas that are separated by clade
 
         # then work clade by clade and align the sequences
@@ -109,8 +114,15 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
 
                 # DEBUG check this fasta for name duplicates to see where it is happening
                 list_of_names = []
+                dup_list = []
+                dup_count = 0
                 for i in range(0, len(clade_separated_fasta_list), 2):
-                    if clade_separated_fasta_list[i][1:]
+                    if clade_separated_fasta_list[i][1:] not in list_of_names:
+                        list_of_names.append(clade_separated_fasta_list[i][1:])
+                    else:
+                        this = 'is'
+                        dup_list.append(clade_separated_fasta_list[i][1:])
+                        dup_count += 1
 
                 output_path_for_aligned_fasta = os.path.join(os.path.dirname(mothur_analysis.fasta_path), f'symbiodinium_fasta_aligned_clade_{clade_in_question}.fa')
 
@@ -139,7 +151,7 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
                         else:
                             state_score_df.loc[index, i] = 0
 
-                ### this is simply
+                ## this is simply
                 # # here we have all of the states processed for the alignment
                 # apples = 'asdf'
                 # # now we can go about trying to plot them. I guess just as a scatter on a single point or maybe as the function of the column position
@@ -150,7 +162,7 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
                 #     x_data.extend([i for _ in range(len(state_score_df.index))])
                 #     y_data.extend(state_score_df[i].values.tolist())
                 #
-                # ax1.hist(y_data, bins=40, color='blue', edgecolor='black')
+                # ax1.hist(y_data, bins=400, color='blue', edgecolor='black')
                 # ax1.set_ylim(0, 200)
                 # plt.show()
                 # ax1.scatter(x=x_data, y=y_data)
@@ -167,34 +179,50 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
                 # we will convert this back to the consensus value of this value (which will be the highest value in
                 # the state matrix for that (column)
 
-                #TODO there seems to be a name duplication happening at some point. I'm not sure how this is happening.
+                # DEBUG there seem to be two of the same entry in the df.
+                # lets check if that is here
+                name_list = []
+                dup_count_list = []
+                dup_count = 0
+                for seq_name in fasta_to_decompose_as_df.index.values.tolist():
+                    if seq_name not in name_list:
+                        name_list.append(seq_name)
+                    else:
+                        dup_count +=1
+                        dup_count_list.append(seq_name)
+                apples = 'asdf'
+
+
 
                 # for each sequence in the df
                 seq_number = len(fasta_to_decompose_as_df.index.values.tolist())
                 seq_count = 0
-                try:
-                    for sequence_name_index in fasta_to_decompose_as_df.index.values.tolist():
-                        seq_count += 1
-                        print(f'sequence {seq_count} our of {seq_number}')
-                        seq_to_check_as_series = fasta_to_decompose_as_df.loc[sequence_name_index]
-                        # for each nucleotide in the sequence
-                        for i in list(seq_to_check_as_series.index.values):
-                            # here we can look at a given nuclotide and look it up in the state table and see if it is above the threshold
-                            current_nucleotide_at_pos_in_seq = seq_to_check_as_series[i]
-                            current_state_score = state_score_df.loc[current_nucleotide_at_pos_in_seq, i]
-                            if current_state_score < 300:
-                                # then this will need changing to the highest scoring state of the column
-                                #idxmax
-                                high_scoring_nucleotide_for_column_in_question = state_score_df[i].idxmax()
-                                fasta_to_decompose_as_df.loc[sequence_name_index, i] = high_scoring_nucleotide_for_column_in_question
-                except:
-                    apples = 'asdf'
+                # TODO there should be a much faster way to do this.
+                for sequence_name_index in fasta_to_decompose_as_df.index.values.tolist():
+                    seq_count += 1
+                    print(f'sequence {seq_count} our of {seq_number}')
+                    seq_to_check_as_series = fasta_to_decompose_as_df.loc[sequence_name_index]
+                    # for each nucleotide in the sequence
+                    for i in list(seq_to_check_as_series.index.values):
+                        # here we can look at a given nuclotide and look it up in the state table and see if it is above the threshold
+                        current_nucleotide_at_pos_in_seq = seq_to_check_as_series[i]
+                        current_state_score = state_score_df.loc[current_nucleotide_at_pos_in_seq, i]
+                        if current_state_score < (seq_number*.025): #TODO make this value to be 2.5% of the total number of seqs
+                            # then this will need changing to the highest scoring state of the column
+                            #idxmax
+                            high_scoring_nucleotide_for_column_in_question = state_score_df[i].idxmax()
+                            fasta_to_decompose_as_df.loc[sequence_name_index, i] = high_scoring_nucleotide_for_column_in_question
+
+
 
 
                 # for the fasta that we are working on it should now have been fully decomposed with the 300 cutoff.
                 # now we should write out the df as a fasta file and take a look at it.
                 decomposed_fasta_as_list = pandas_df_to_fasta(fasta_to_decompose_as_df)
-                output_path_for_decomposed_fasta = os.path.join(os.path.dirname(output_path_for_aligned_fasta), f'decomposed_fasta_clade_{clade_in_question}')
+
+                output_path_for_decomposed_fasta = os.path.join(os.path.dirname(output_path_for_aligned_fasta), f'decomposed_fasta_clade_{clade_in_question}_with_gaps.fa')
+                print(output_path_for_decomposed_fasta)
+                write_list_to_destination(output_path_for_decomposed_fasta, decomposed_fasta_as_list)
 
                 # this will now need to be uniqued and then plotted up to have a look at it.
         # here we have a set of sequences that have found matches to some degree with the symClade.fa dictionary
@@ -203,8 +231,17 @@ def process_on_sample_by_sample_basis(list_of_fastq_file_paths):
         # and then run the algorythm thingy on them.
         apples = 'asdf'
 
-
-
+def pause_point_decomposed_fasta():
+    decomposed_fasta_path = '/home/humebc/projects/carradec_nanopore/working_directory/KBS4/BC12/decomposed_fasta_clade_C_with_gaps.fa'
+    decomposed_fasta_without_gaps_as_list = remove_gaps_from_fasta(read_defined_file_to_list(decomposed_fasta_path))
+    decomposed_fasta_path_without_gaps = '/home/humebc/projects/carradec_nanopore/working_directory/KBS4/BC12/decomposed_fasta_clade_C_without_gaps.fa'
+    write_list_to_destination(decomposed_fasta_path_without_gaps, decomposed_fasta_without_gaps_as_list)
+    apples = 'asdf'
+    # here we should unique and then plot up
+    # update the mothur analysis object and write the code for uniqueing
+    # for time being just do it on the command line
+    path_of_uniqued_decomposed_fasta = '/home/humebc/projects/carradec_nanopore/working_directory/KBS4/BC12/decomposed_fasta_clade_C_without_gaps.unique.fa'
+    path_of_uniqued_decomposed_name = '/home/humebc/projects/carradec_nanopore/working_directory/KBS4/BC12/decomposed_fasta_clade_C_without_gaps.names'
 
 
 def move_fastq_gz_files_to_new_subdirectories_and_decompress():
@@ -273,7 +310,8 @@ def get_list_of_fasta_gz_files(sequence_file_directory):
         if file_path.endswith('fastq.gz')
     ]
 
-do_analysis(already_moved_files=True)
+# do_analysis(already_moved_files=True)
+pause_point_decomposed_fasta()
 
 
 
