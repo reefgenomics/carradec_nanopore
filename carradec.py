@@ -7,19 +7,98 @@ import matplotlib as mpl
 mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 
-"""The ITS2 amplifications have been done with the LaJeunesse primers. The fastq files are located here:
+""" So.. The idea of this analysis was to test out my own version of alignment decomposition.
+    Sadly, I'm going to have to abandon it at this point. I've spent a lot of time on it but I think
+    that at the end of the day, the sequencing is just too innacurate to get anything close to what the illumina
+    data gives us. Instead, what I'll do is simply annotate the sequences that he currently has according to the
+    same naming system that the SymPortal remote repository uses and then ship this back to him.
+    
+The ITS2 amplifications have been done with the LaJeunesse primers. The fastq files are located here:
 /home/humebc/projects/carradec_nanopore/all_reads
-We should create a sequence collection from each of the fastq.gz files
-convert them to fasta files
-then run a mothur analysis on them that will do a PCR using the laj primers
-we should then run a blast analysis on them to get only symbiodiniaceae sequences
-we should then seperate them by clade and then run MED.
-If MED isn't working then I think it should be quite simple to come up with an algrythm that approximates the concepts
-behind MED. I.e. find the consensus sequence, then find the next most numerate nucleotide etc etc. and compare these
-to the preMED SymPortal results.
+
+The dcomposition was going to work as such: You do an alignment of the sequences you have,
+then you work your way column by column through that alignment calculating each states score. The state is either
+gap, A, C, G or T. The score is +1 for every occurence of that score in the column you are in. You work all the way
+through the alignment doing this. Then, you set a threshold for the score that is required for a given state to be
+recognised as non-error and to be kept. 
+Then you work through the original sequences, one by one. For each sequences, go through each of the nucleotides.
+At each position in the sequences, you look at what nucleotide is there (gap, A, C, T, or G) and you look up the 
+corresponding score of the nucleotide from when you did the state scoring. This score will be specific for that 
+nucleotide in that column. If you are above the threshold that has been set, you keep the nucleotide in that 
+position. if not, you revert it to the highest scoring state in that column. Simples :). I was considering doing
+this through several iterations, ie. set the threshold quite low, do the decomp, then realign, then do the decomp
+again. Problem was that there was just soooo much error in the nanopore data and that each ITS2 seq variant is only
+a single nucleotide apart that it really wasn't possible to get this to show good agreement with the Illumina
+sequencing results. Sad times.
 """
 
-def do_analysis(already_moved_files=False):
+# ### Code for doing the annotations according to the SymPortal db.
+def annotate_quentin_samples():
+    """ Quentin has a tab delim file that has each of the sequences that were called in each of the samples
+    We will read this in and parse through the symportal master fasta to find matches. We will look for exact matches
+    If we don't have an exact match then we can work with the seq name he already has.
+    """
+    path_to_tab_delim = '/home/humebc/projects/carradec_nanopore/ITS2_consensus.txt'
+    path_to_symportal_master_fasta = '/home/humebc/projects/carradec_nanopore/master_fasta.fa'
+
+    sp_dict = create_dict_from_fasta(read_defined_file_to_list(path_to_symportal_master_fasta))
+
+    # make a pandas dataframe from the tab delim file
+    cols = ['site', 'sample', 'q_type', 'count', 'samp_count', 'sequence']
+    quentin_df = pd.read_csv(sep='\t', filepath_or_buffer=path_to_tab_delim, names=cols)
+    quentin_df.index = range(len(quentin_df.index.values.tolist()))
+
+    # get a unique set of sequences. We will use these to make a dictionary of what they should be called with the
+    # full sequence as the key and the name of the sequence as the value.
+    # this way we are not redoing searches for the same sequences just becuase they are in different samples
+    unique_sequence_list = []
+    for index_value in quentin_df.index.values.tolist():
+        seq_in_question = quentin_df.iloc[index_value]['sequence']
+        if seq_in_question not in unique_sequence_list:
+            unique_sequence_list.append(seq_in_question)
+
+    # here we have a list of the sequences we will need to run through.
+
+    seq_to_check_count = 0
+    match_dict = {}
+    for seq_to_check in unique_sequence_list:
+        print(f'Checking seq {seq_to_check_count} out of {len(unique_sequence_list)}')
+        found = False
+        for k, v in sp_dict.items():
+            if seq_to_check in v or v in seq_to_check:
+                # then we have a match and we should use k as the name for this sequences
+                match_dict[seq_to_check] = k
+                found = True
+                break
+        if not found:
+            match_dict[seq_to_check] = 'no_match'
+        seq_to_check_count += 1
+
+
+    # here we have checked all of the sequences and we now have a dict
+    # we can now go back through the original quentin dict and add a column that can be the sp_name
+    quentin_df['sp_name'] = 'no_value'
+    # reorder so that the sp_name is next to the q_type
+    quentin_df = quentin_df[['site', 'sample', 'q_type', 'sp_name', 'count', 'samp_count', 'sequence']]
+    for index_value in quentin_df.index.values.tolist():
+        quentin_df.at[index_value, 'sp_name'] = match_dict[quentin_df.iloc[index_value]['sequence']]
+
+    # here we have the new row of the df popualted and it is now time to
+    # write it out as tab delim again and ship it back
+    quentin_df.to_csv(
+        path_or_buf='/home/humebc/projects/carradec_nanopore/ITS2_consensus_sp.txt', sep='\t', index=False
+    )
+
+    # baddabing.
+
+annotate_quentin_samples()
+# #### Code for trying to do the decomposition of the samples
+def do_analysis_decomposition(already_moved_files=False):
+    """The idea of this analysis was to test out my own version of alignment decomposition.
+    Sadly, I'm going to have to abandon it at this point. I've spent a lot of time on it but I think
+    that at the end of the day, the sequencing is just too innacurate to get anything close to what the illumina
+    data gives us. Instead, what I'll do is simply annotate the sequences that he currently has according to the
+    same naming system that the SymPortal remote repository uses."""
     list_of_fastq_file_paths = get_list_of_fastq_files(already_moved_files)
 
     process_on_sample_by_sample_basis(list_of_fastq_file_paths)
@@ -262,7 +341,6 @@ def move_and_extract_each_fastq_gz_to_corresponding_subdirectory(wkd_head_path, 
     return list_of_fastq_file_paths
 
 
-
 def extract_fastq_gz_in_new_directory(target_path):
     subprocess.run(['gunzip', f'{target_path}'])
 
@@ -311,229 +389,4 @@ def get_list_of_fasta_gz_files(sequence_file_directory):
     ]
 
 # do_analysis(already_moved_files=True)
-pause_point_decomposed_fasta()
-
-
-
-
-
-# def create_fasta_from_fastq_with_certain_primer_seq():
-#     fastq_file = read_defined_file_to_list('/home/humebc/projects/carradec_nanopore/KBS1/BC01.fastq')
-#     counter = 0
-#     fasta_out = []
-#
-#     for i  in range(len(fastq_file)):
-#         if fastq_file[i].startswith('@'):
-#             get_name_from_fastq_def_line
-#             if i < len(fastq_file) - 1:
-#                 if 'AATGGCCTCCTGAACGTG' in fastq_file[i+1]:
-#                     fasta_out.extend(['>seq_{}'.format(counter), fastq_file[i+1]])
-#                     counter += 1
-#
-#     # write out to have a look at and find the
-#     write_list_to_destination('/home/humebc/projects/carradec_nanopore/python_code/sample.fasta', fasta_out)
-
-
-# create_fasta_from_fastq()
-
-# Pull out the Symbiodinium sequences and have a look at how many sequences are returned for the number
-# of mismatches allowed to the LaJeunesse sequences
-# The fastqs contain coral 18S, symbiodinium ITS2 and bacterial 16S so we can start by simply
-# running all of the sequences against a blast search and then only keep the symbiodinium sequences
-# we still need to get rid of the primer sequences before analysis obviously but we don't really
-# need to use this as a type of QC so we can have quite a high mismatch allowance I think
-
-# do quality screening using seqtk fqchk set at value of 10
-# then use seqtk to convert the resultant fastq into a fasta
-# then read this in below.
-
-# def pull_out_symbiodinium_seqs_from_fastq(required_symbiodinium_matches):
-#     '''generate a fasta that only contains symbiodinium sequences. Return this as a list
-#     do this by running a blast search against the nt database and checking for Symbiodinium hits'''
-#
-#
-#     # sample_base_dir = '/home/humebc/projects/carradec_nanopore/KBS1'
-#     # # Write out the hidden file that points to the ncbi database directory.
-#     # ncbircFile = []
-#     # # db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'symbiodiniumDB'))
-#     # db_path = '/home/humebc/phylogeneticSoftware/ncbi-blast-2.6.0+/ntdbdownload'
-#     # ncbircFile.extend(["[BLAST]", "BLASTDB={}".format(db_path)])
-#     # writeListToDestination("{}/.ncbirc".format(sample_base_dir), ncbircFile)
-#     #
-#     #
-#     # # Create a fasta file from the fastq
-#     # fasta_file = create_fasta_from_fastq('{}/BC01.fastq'.format(sample_base_dir))
-#     # # write the fast_file
-#     # path_to_input_fasta = '{}/BC01_all_seqs.fasta'.format(sample_base_dir)
-#     # writeListToDestination(path_to_input_fasta, fasta_file)
-#     # fasta_file_dict = createDictFromFasta(fasta_file)
-#     #
-#     # # Set up environment for running local blast
-#     # blastOutputPath = '{}/BC01.blast.out'.format(sample_base_dir)
-#     # outputFmt = "6 qseqid sseqid staxids evalue pident qcovs staxid stitle ssciname"
-#     # # inputPath = r'{}/below_e_cutoff_seqs.fasta'.format(data_sub_data_dir)
-#     # os.chdir('{}'.format(sample_base_dir))
-#     #
-#     # # Run local blast
-#     # # completedProcess = subprocess.run([blastnPath, '-out', blastOutputPath, '-outfmt', outputFmt, '-query', inputPath, '-db', 'symbiodinium.fa', '-max_target_seqs', '1', '-num_threads', '1'])
-#     # # completedProcess = subprocess.run(
-#     # #     ['blastn', '-out', blastOutputPath, '-outfmt', outputFmt, '-query', path_to_input_fasta, '-db', 'nt',
-#     # #      '-max_target_seqs', '10', '-num_threads', '20'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#     #
-#     # # Read in blast output
-#     # blast_output_file = readDefinedFileToList('{}/BC01.blast.out'.format(sample_base_dir))
-#     #
-#     # # create a dict that is the query name key and a list of subject return value
-#     # blast_output_dict = defaultdict(list)
-#     # for line in blast_output_file:
-#     #     blast_output_dict[line.split('\t')[0]].append('\t'.join(line.split('\t')[1:]))
-#     #
-#     # verified_sequence_list = []
-#     # for k, v in blast_output_dict.items():
-#     #     sym_count = 0
-#     #     for result_str in v:
-#     #         if 'Symbiodinium' in result_str:
-#     #             percentage_coverage = float(result_str.split('\t')[4])
-#     #             if percentage_coverage > 90:
-#     #                 sym_count += 1
-#     #                 if sym_count == required_symbiodinium_matches:
-#     #                     verified_sequence_list.append(k)
-#     #                     break
-#     #
-#     # # We only need to proceed from here to make a new database if we have sequences that have been verified as
-#     # # Symbiodinium
-#     #
-#     # # here we have a list of the Symbiodinium sequences that we can add to the reference db fasta
-#     # new_fasta = []
-#     # for seq_to_add in verified_sequence_list:
-#     #     new_fasta.extend(['>{}'.format(seq_to_add), '{}'.format(fasta_file_dict[seq_to_add])])
-#     #
-#     #
-#     # # Here we have the symbiodinium sequence fasta that we can work with
-#     #
-#     #
-#     # path_to_input_fasta = '{}/BC01_symbiodinium.fasta'.format(sample_base_dir)
-#     # writeListToDestination(path_to_input_fasta, new_fasta)
-#     #
-#     # # here we should use mothur to remove the primers
-#     # # we will have to do this twice to make sure that we get the rev complement seqs as well
-#     # # do it first, then get the remainder file and reverse complement all of the sequences in there
-#     # # then run the same pcr.seqs on this rev comped file
-#     # primerFwdSeq = 'GAATTGCAGAACTCCGTGAACC'  # Written 5'-->3'
-#     # primerRevSeq = 'CGGGTTCWCTTGTYTGACTTCATGC'  # Written 5'-->3'
-#     #
-#     # oligoFile = [
-#     #     r'#SYM_VAR_5.8S2',
-#     #     'forward\t{0}'.format(primerFwdSeq),
-#     #     r'#SYM_VAR_REV',
-#     #     'reverse\t{0}'.format(primerRevSeq)
-#     # ]
-#     #
-#     # path_to_oligo_file = '{}/oligo_file.oligo'.format(sample_base_dir)
-#     # writeListToDestination(path_to_oligo_file, oligoFile)
-#     #
-#     # mBatchFile = [
-#     #     'pcr.seqs(fasta={}, oligos={}, pdiffs=6, rdiffs=6)'.format(
-#     #         path_to_input_fasta, path_to_oligo_file)
-#     # ]
-#     #
-#     # path_to_m_batch_file = '{}/m_batch_file'.format(sample_base_dir)
-#     # writeListToDestination(path_to_m_batch_file, mBatchFile)
-#     # subprocess.run(['mothur', path_to_m_batch_file])
-#     # for_comp_fasta_out_path = path_to_input_fasta.replace('.fasta', '.pcr.fasta')
-#     # # find out what the output file will be called so that we can reverse complement and then pcr again.
-#     # scrapped_seq_fasta_path = path_to_input_fasta.replace('.fasta', '.scrap.pcr.fasta')
-#     # # need to remove the comments about matches etc.
-#     # scrapped_fasta_clean = remove_annotations_from_fasta(scrapped_seq_fasta_path)
-#     # # write out the scrapped fasta
-#     # writeListToDestination(scrapped_seq_fasta_path, scrapped_fasta_clean)
-#     # rev_complemented_fasta_path = scrapped_seq_fasta_path.replace('.fasta', '.rc.fasta')
-#     # #reverse complement the fasta and then perorm the seqs.pcr again
-#     # mBatchFile_two = [
-#     #     'reverse.seqs(fasta={})'.format(scrapped_seq_fasta_path),
-#     #     'pcr.seqs(fasta={}, oligos={}, pdiffs=6, rdiffs=6)'.format(rev_complemented_fasta_path, path_to_oligo_file)
-#     # ]
-#     #
-#     # path_to_m_batch_file_two = '{}/m_batch_file_two'.format(sample_base_dir)
-#     # writeListToDestination(path_to_m_batch_file_two, mBatchFile_two)
-#     # subprocess.run(['mothur', path_to_m_batch_file_two])
-#     # rev_comp_fasta_out_path = path_to_input_fasta.replace('.fasta', '.scrap.pcr.rc.pcr.fasta')
-#     # # now add both of these fastas into one file
-#     # for_comp_fasta = readDefinedFileToList(for_comp_fasta_out_path)
-#     # rev_comp_fasta = readDefinedFileToList(rev_comp_fasta_out_path)
-#     # primer_fasta = []
-#     # primer_fasta += for_comp_fasta
-#     # primer_fasta += rev_comp_fasta
-#     # clean_primer_fasta = createNoSpaceFastaFile(primer_fasta)
-#     # path_to_input_fasta_clade_blast = '{}/BC01_symbiodinium.pcr.rev.for.fasta'.format(sample_base_dir)
-#     # blast_output_two = '{}/BC01.blast.two.out'.format(sample_base_dir)
-#     # # we should clade separate these sequences
-#     #
-#     # writeListToDestination(path_to_input_fasta_clade_blast, clean_primer_fasta)
-#     # fasta_dict = createDictFromFasta(clean_primer_fasta)
-#     #
-#     # ncbircFile = []
-#     # db_path = '/home/humebc/phylogeneticSoftware/SymPortal_interim_250318/symbiodiniumDB'
-#     # ncbircFile.extend(["[BLAST]", "BLASTDB={}".format(db_path)])
-#     # outputFmt = "6 qseqid sseqid staxids evalue"
-#     # writeListToDestination("{}/.ncbirc".format(sample_base_dir), ncbircFile)
-#     #
-#     # completedProcess = subprocess.run(
-#     #     ['blastn', '-out', blast_output_two, '-outfmt', outputFmt, '-query', path_to_input_fasta_clade_blast, '-db', 'symClade_2_2.fa',
-#     #      '-max_target_seqs', '1', '-num_threads', '1'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#     #
-#     # clade_list = list('ABCDEFGHI')
-#     # fasta_holder = [[] for clade in clade_list]
-#     #
-#     # # Read in blast output
-#     # blast_output_file = readDefinedFileToList(blast_output_two)
-#     #
-#     # # Read in blast output
-#     # blast_dict = {a.split('\t')[0]: a.split('\t')[1][-1] for a in blast_output_file}
-#     #
-#     # for k, v in blast_dict.items():
-#     #     fasta_holder[clade_list.index(v)].extend(['>{}'.format(k), fasta_dict[k]])
-#     #
-#     # # now we just need to write out the cladal fasta
-#     # for clade_fasta in fasta_holder:
-#     #     if clade_fasta:
-#     #         path_to_clade_fasta = '{0}/{1}/BC01_clade{1}.fasta'.format(sample_base_dir, clade_list[fasta_holder.index(clade_fasta)])
-#     #         writeListToDestination(path_to_clade_fasta, clade_fasta)
-#
-#     # for now lets just have a look at the the single C alignment and see what MED can do with it.
-#     # add dashes to the short seqs.
-#     gaps_input = '/home/humebc/projects/carradec_nanopore/KBS1/C/cladeC.fasta'
-#     MED_out_dir = '/home/humebc/projects/carradec_nanopore/KBS1/C'
-#
-#     completedProcess = subprocess.run([r'o-pad-with-gaps', r'{}'.format(gaps_input)], stdout=subprocess.PIPE,
-#                                       stderr=subprocess.PIPE)
-#
-#     listOfFiles = []
-#     for (dirpath, dirnames, filenames) in os.walk(MED_out_dir):
-#         listOfFiles.extend(filenames)
-#         break
-#     for file in listOfFiles:
-#         if 'PADDED' in file:
-#             path_to_file = '{0}/{1}'.format(MED_out_dir, file)
-#             break
-#
-#     # completedProcess = subprocess.run(
-#     #     [r'decompose', '--skip-gexf-files', '--skip-gen-figures', '--skip-gen-html', '--skip-check-input', '-o',
-#     #      MED_out_dir, path_to_file], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#
-#     # lets unique
-#
-#
-#     completedProcess = subprocess.run(
-#         [r'decompose', '--skip-gexf-files', '--skip-gen-figures', '--skip-gen-html', '--skip-check-input', '-M', '1', '-o',
-#          MED_out_dir, path_to_file])
-#
-#
-#     # once we have the sequences clade separated we should write them out in a clade directory
-#     # we should then have a look at them to see how they look.
-#
-#     return new_fasta
-
-
-
-
+# pause_point_decomposed_fasta()
